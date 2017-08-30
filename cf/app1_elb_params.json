@@ -1,0 +1,32 @@
+{
+  "Parameters" : {
+        "VpcId":"vpc-273bbb41",
+        "Environment": "dev",
+        "BastionCidr1": "10.99.40.0/28",
+        "BastionCidr2": "10.99.40.16/28",
+        "BastionCidr3": "10.99.40.32/28",
+        "SubnetIds":"subnet-47a4520f,subnet-8dbc6eeb,subnet-8dbc6eeb",
+        "InstancePort":"80",
+        "HealthCheckProtocol":"TCP",
+        "HealthCheckResponseTimeout":"5",
+        "HealthCheckInterval":"6",
+        "Application": "myapp",
+        "HealthCheckHealthyThreshold":"2",
+        "HealthCheckUnhealthyThreshold":"5",
+        "ELBExportName":"",
+        "ELBDNSExportName":"",
+        "AppSGExportName":""
+  },
+  "StackPolicy" : {
+    "Statement" : [
+      {
+        "Effect" : "Allow",
+        "NotAction" : "Update:Delete",
+        "Principal": "*",
+        "Resource" : "*"
+      }
+    ]
+  }
+}
+
+

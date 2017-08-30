@@ -1,0 +1,26 @@
+{
+  "Parameters" : {
+        "SubnetAzs":"us-west-2a,us-west-2b,us-west-2c",
+        "SubnetIds":"subnet-f421d7bc,subnet-1427f572,subnet-aa4e23f1",
+        "InstanceType":"m3.small",
+        "AccountId": "334419994682",
+        "AllocationId": "eipalloc-0c9c5431",
+        "AmiId":"ami-1a59df7a",
+        "KeyName":"ops-key",
+        "VpcId":"vpc-273bbb41",
+        "SSHKeysBucket":"ssh-334419994682-keys",
+        "Region":"us-west-2"
+  },
+  "StackPolicy" : {
+    "Statement" : [
+      {
+        "Effect" : "Allow",
+        "NotAction" : "Update:Delete",
+        "Principal": "*",
+        "Resource" : "*"
+      }
+    ]
+  }
+}
+
+

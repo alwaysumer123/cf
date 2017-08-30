@@ -1,0 +1,258 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Internal and externa ELB for desnxg conduit",
+
+  "Parameters": {
+
+    "VpcId": {
+      "Description": "VPC ID",
+      "Type": "String"
+    },
+
+    "Environment": {
+      "Description": "desnxg environment prod or e2e,dev,qa,perf",
+      "Type": "String"
+    },
+
+    "BastionCidr1": {
+      "Type" : "String",
+      "Description": "CIDR Of Bastion Subnet1"
+    },
+    "BastionCidr2": {
+      "Type" : "String",
+      "Description": "CIDR Of Bastion Subnet2"
+    }, 
+    "BastionCidr3": {
+      "Type" : "String",
+      "Description": "CIDR Of Bastion Subnet3"
+    }, 
+
+    "s3LoggingBucket": {
+      "Type" : "String",
+      "Description": "CIDR Of Bastion Subnet3",
+      "Default":"myapp-dev-elblogs-us-west-2"
+    },    
+
+    "SubnetIds": {
+      "Description": "IDs of subnets for the ELB",
+      "Type": "CommaDelimitedList"
+    },
+
+    "InstancePort": {
+      "Type": "String",
+      "Default": "80",
+      "Description": "Port to forward traffic to for Application access"
+    },
+
+    "HealthCheckURL": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Relative URL (i.e. /status) for the health check"
+    },
+
+    "HealthCheckProtocol": {
+      "Type": "String",
+      "Default": "TCP",
+      "Description": "Protocol to use for health checks"
+    },
+
+    "HealthCheckResponseTimeout": {
+      "Type": "String",
+      "Default": "5",
+      "Description": "Seconds before timing out health checks"
+    },
+    "HealthCheckInterval": {
+      "Type": "String",
+      "Default": "6",
+      "Description": "Interval, in seconds, to execute health checks"
+    },
+    "Application": {
+      "Description": "Application tag value",
+      "Type": "String",
+      "Default": "desnxg"
+    },
+    "HealthCheckHealthyThreshold": {
+      "Type": "String",
+      "Default": "2",
+      "Description": "Number of consecutive succesful health checks before marking as healthy"
+    },
+
+    "HealthCheckUnhealthyThreshold": {
+      "Type": "String",
+      "Default": "5",
+      "Description": "Number of consecutive unsuccesful health checks before marking as unhealthy"
+    },
+
+
+    "ELBExportName": {
+      "Type": "String",
+      "Description": "Export Name of the External Load Balancer"
+    },
+
+    
+    "ELBDNSExportName": {
+      "Type": "String",
+      "Description": "Export Name of the External Load Balancer DNS Name"
+    },
+
+    "AppSGExportName": {
+      "Type": "String",
+      "Description": "Export Name of the App SecurityGroup"
+    },
+
+    "Description": {
+      "Type": "String",
+      "Default": "Internal and External LB",
+      "Description": ""
+    }
+
+  },
+
+
+
+  "Resources": {
+    
+    "AppAccessGroupIdSG": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": { "Ref": "Description" },
+        "VpcId": { "Ref": "VpcId" }
+      }
+    },
+    
+    "ExternalELB": {
+      "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties": {
+        "HealthCheck": {
+          "Target": { "Fn::Join": [ "", [ { "Ref": "HealthCheckProtocol" }, ":",
+                                          { "Ref": "InstancePort" },
+                                          { "Ref": "HealthCheckURL" } ] ] },
+          "HealthyThreshold": { "Ref": "HealthCheckHealthyThreshold" },
+          "UnhealthyThreshold": { "Ref": "HealthCheckUnhealthyThreshold" },
+          "Interval": { "Ref": "HealthCheckInterval" },
+          "Timeout": { "Ref": "HealthCheckResponseTimeout" }
+        },
+        "CrossZone": "true",
+        "AccessLoggingPolicy": {
+          "EmitInterval": "60",
+          "Enabled": "true",
+          "S3BucketName":  {"Ref":"s3LoggingBucket"},
+          "S3BucketPrefix": "app"
+        },
+        "Listeners": [
+          {
+            "LoadBalancerPort": { "Ref": "InstancePort" },
+            "InstancePort": { "Ref": "InstancePort" },
+            "Protocol": "TCP"
+          }
+        ],
+        "SecurityGroups": [
+          { "Ref": "AppAccessGroupIdSG" },
+          { "Ref": "ExternalElbSecurityGroup" }
+        ],
+        "Scheme": "internet-facing",
+        "Subnets": { "Ref": "SubnetIds" },
+        "Tags": [
+          {"Key": "Name", "Value": { "Ref": "AWS::StackName" }},
+          {"Key": "Role", "Value": "elb"},
+          {"Key": "Environment", "Value": { "Ref": "Environment" }},
+          {"Key": "Application", "Value": { "Ref": "Application" }}
+        ]
+      }
+    },
+        
+    "InternalELB": {
+      "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties": {
+        "HealthCheck": {
+          "Target": { "Fn::Join": [ "", [ { "Ref": "HealthCheckProtocol" }, ":",
+                                          { "Ref": "InstancePort" },
+                                          { "Ref": "HealthCheckURL" } ] ] },
+          "HealthyThreshold": { "Ref": "HealthCheckHealthyThreshold" },
+          "UnhealthyThreshold": { "Ref": "HealthCheckUnhealthyThreshold" },
+          "Interval": { "Ref": "HealthCheckInterval" },
+          "Timeout": { "Ref": "HealthCheckResponseTimeout" }
+        },
+        "CrossZone": "true",
+        "AccessLoggingPolicy": {
+          "EmitInterval": "60",
+          "Enabled": "true",
+          "S3BucketName":  {"Ref":"s3LoggingBucket"},
+          "S3BucketPrefix": "app"
+        },
+        "Listeners": [
+          {
+            "LoadBalancerPort": { "Ref": "InstancePort" },
+            "InstancePort": { "Ref": "InstancePort" },
+            "Protocol": "TCP"
+          }
+        ],
+        "SecurityGroups": [
+          { "Ref": "AppAccessGroupIdSG" }
+        ],
+        "Scheme": "internal",
+        "Subnets": { "Ref": "SubnetIds" },
+        "Tags": [
+          {"Key": "Name", "Value": { "Ref": "AWS::StackName" }},
+          {"Key": "Role", "Value": "ilb"},
+          {"Key": "Environment", "Value": { "Ref": "Environment" }},
+          {"Key": "Application", "Value": { "Ref": "Application" }}
+        ]
+      }
+    },
+    
+    "ExternalElbSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": { "Ref": "VpcId" },
+        "GroupDescription": "Allow access from these cidrs",
+        "SecurityGroupIngress": [
+          {"IpProtocol": "tcp","FromPort": { "Ref": "InstancePort" },"ToPort": { "Ref": "InstancePort" }, "CidrIp": "0.0.0.0/0" }
+      
+      
+        ],
+        "Tags": [
+          {"Key": "Name", "Value": { "Ref": "AWS::StackName" }},
+          {"Key": "Role", "Value": "elb"},
+          {"Key": "Environment", "Value": { "Ref": "Environment" }},
+          {"Key": "Application", "Value": { "Ref": "Application" }}
+        ]
+      }
+    }    
+    
+  },
+
+  "Outputs": {
+    
+    "ExternalAppLoadBalancerNames": {
+      "Description": "Names of the External ELB",
+      "Value": { "Ref": "ExternalELB" },
+      "Export" : {
+      "Name" : { "Ref": "ELBExportName" }
+    }
+    },    
+
+    "InternalAppLoadBalancerDNSName": {
+      "Description": "DNS name of Internal ELB",
+      "Value": { "Fn::GetAtt": [ "InternalELB", "DNSName" ]}
+    },
+
+    "ExternalAppLoadBalancerDNSName": {
+      "Description": "DNS name of External ELB",
+      "Value": { "Fn::GetAtt": [ "ExternalELB", "DNSName" ]},
+      "Export" : {
+      "Name" : { "Ref": "ELBDNSExportName" }
+    }
+    },    
+    
+    "AppAccessGroupId": {
+      "Description": "APP access security group",
+      "Value": { "Ref": "AppAccessGroupIdSG" },
+      "Export" : {
+      "Name" : { "Ref": "AppSGExportName"}
+    }
+    }
+
+  }
+
+}

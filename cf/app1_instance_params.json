@@ -1,0 +1,38 @@
+{
+  "Parameters" : {
+
+
+        "VpcId":"vpc-273bbb41",
+        "AwsAccountId": "334419994682",
+        "BastionCidr1": "10.99.40.0/28",
+        "BastionCidr2": "10.99.40.16/28",
+        "BastionCidr3": "10.99.40.32/28",
+        "AvailabilityZones": "us-west-2b",
+        "InfrastructureSnsTopicArn": "arn:aws:sns:us-west-2:334419994682:myapp-sns-topic",
+        "MaximumInstances": "2",
+        "MinimumInstances": "1",
+        "AmiId": "ami-1a59df7a",
+        "SubnetIds": "subnet-9918fffd",
+        "Role": "pipeline",
+        "Application": "conduit",
+        "Customer":"tax",
+        "Environment": "dev",
+        "EnvironmentIncrement":"5",
+        "InstanceType": "m3.medium",
+        "ExternalAppLoadBalancerName":"",
+        "AppAccessGroupId":"",
+        "Abort": "no"
+  },
+  "StackPolicy" : {
+    "Statement" : [
+      {
+        "Effect" : "Allow",
+        "NotAction" : "Update:Delete",
+        "Principal": "*",
+        "Resource" : "*"
+      }
+    ]
+  }
+}
+
+

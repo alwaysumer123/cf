@@ -1,0 +1,320 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Internal and externa ELB for desnxg conduit",
+
+  "Parameters": {
+
+    "VpcId": {
+      "Description": "VPC ID",
+      "Type": "String"
+    },
+
+    "Environment": {
+      "Description": "desnxg environment prod or e2e,dev,qa,perf",
+      "Type": "String"
+    },
+
+    "BastionCidr1": {
+      "Type" : "String",
+      "Description": "CIDR Of Bastion Subnet1"
+    },
+    "BastionCidr2": {
+      "Type" : "String",
+      "Description": "CIDR Of Bastion Subnet2"
+    }, 
+    "BastionCidr3": {
+      "Type" : "String",
+      "Description": "CIDR Of Bastion Subnet3"
+    }, 
+
+    "s3LoggingBucket": {
+      "Type" : "String",
+      "Description": "CIDR Of Bastion Subnet3",
+      "Default":"myapp-dev-elblogs-us-west-2"
+    },    
+
+    "SubnetIds": {
+      "Description": "IDs of subnets for the ELB",
+      "Type": "CommaDelimitedList"
+    },
+
+    "InstancePort": {
+      "Type": "String",
+      "Default": "443",
+      "Description": "Port to forward traffic to for Application access"
+    },
+
+    "HealthCheckURL": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Relative URL (i.e. /status) for the health check"
+    },
+
+    "HealthCheckProtocol": {
+      "Type": "String",
+      "Default": "TCP",
+      "Description": "Protocol to use for health checks"
+    },
+
+    "HealthCheckResponseTimeout": {
+      "Type": "String",
+      "Default": "5",
+      "Description": "Seconds before timing out health checks"
+    },
+    "HealthCheckInterval": {
+      "Type": "String",
+      "Default": "6",
+      "Description": "Interval, in seconds, to execute health checks"
+    },
+    "Application": {
+      "Description": "Application tag value",
+      "Type": "String",
+      "Default": "desnxg"
+    },
+    "HealthCheckHealthyThreshold": {
+      "Type": "String",
+      "Default": "2",
+      "Description": "Number of consecutive succesful health checks before marking as healthy"
+    },
+
+    "HealthCheckUnhealthyThreshold": {
+      "Type": "String",
+      "Default": "5",
+      "Description": "Number of consecutive unsuccesful health checks before marking as unhealthy"
+    },
+
+
+    "ILBExportName": {
+      "Type": "String",
+      "Description": "Export Name of the Internal Load Balancer"
+    },
+
+    "ELBExportName": {
+      "Type": "String",
+      "Description": "Export Name of the External Load Balancer"
+    },
+
+    
+    "ELBDNSExportName": {
+      "Type": "String",
+      "Description": "Export Name of the External Load Balancer DNS Name"
+    },
+
+    "AppSGExportName": {
+      "Type": "String",
+      "Description": "Export Name of the App SecurityGroup"
+    },
+
+    "Description": {
+      "Type": "String",
+      "Default": "Internal and External LB for desnxg conduit",
+      "Description": "traffic to desnxg-conduit"
+    }
+
+  },
+
+
+
+  "Resources": {
+    
+    "AppAccessGroupIdSG": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": { "Ref": "Description" },
+        "VpcId": { "Ref": "VpcId" }
+      }
+    },
+    
+    "ExternalELB": {
+      "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties": {
+        "HealthCheck": {
+          "Target": { "Fn::Join": [ "", [ { "Ref": "HealthCheckProtocol" }, ":",
+                                          { "Ref": "InstancePort" },
+                                          { "Ref": "HealthCheckURL" } ] ] },
+          "HealthyThreshold": { "Ref": "HealthCheckHealthyThreshold" },
+          "UnhealthyThreshold": { "Ref": "HealthCheckUnhealthyThreshold" },
+          "Interval": { "Ref": "HealthCheckInterval" },
+          "Timeout": { "Ref": "HealthCheckResponseTimeout" }
+        },
+        "CrossZone": "true",
+        "AccessLoggingPolicy": {
+          "EmitInterval": "60",
+          "Enabled": "true",
+          "S3BucketName":  {"Ref":"s3LoggingBucket"},
+          "S3BucketPrefix": "app"
+        },
+        "Listeners": [
+          {
+            "LoadBalancerPort": { "Ref": "InstancePort" },
+            "InstancePort": { "Ref": "InstancePort" },
+            "Protocol": "TCP"
+          }
+        ],
+        "SecurityGroups": [
+          { "Ref": "AppAccessGroupIdSG" },
+          { "Ref": "ExternalElbSecurityGroup" }
+        ],
+        "Scheme": "internet-facing",
+        "Subnets": { "Ref": "SubnetIds" },
+        "Tags": [
+          {"Key": "Name", "Value": { "Ref": "AWS::StackName" }},
+          {"Key": "Role", "Value": "elb"},
+          {"Key": "Environment", "Value": { "Ref": "Environment" }},
+          {"Key": "Application", "Value": { "Ref": "Application" }}
+        ]
+      }
+    },
+        
+    "InternalELB": {
+      "Type": "AWS::ElasticLoadBalancing::LoadBalancer",
+      "Properties": {
+        "HealthCheck": {
+          "Target": { "Fn::Join": [ "", [ { "Ref": "HealthCheckProtocol" }, ":",
+                                          { "Ref": "InstancePort" },
+                                          { "Ref": "HealthCheckURL" } ] ] },
+          "HealthyThreshold": { "Ref": "HealthCheckHealthyThreshold" },
+          "UnhealthyThreshold": { "Ref": "HealthCheckUnhealthyThreshold" },
+          "Interval": { "Ref": "HealthCheckInterval" },
+          "Timeout": { "Ref": "HealthCheckResponseTimeout" }
+        },
+        "CrossZone": "true",
+        "AccessLoggingPolicy": {
+          "EmitInterval": "60",
+          "Enabled": "true",
+          "S3BucketName":  {"Ref":"s3LoggingBucket"},
+          "S3BucketPrefix": "app"
+        },
+        "Listeners": [
+          {
+            "LoadBalancerPort": { "Ref": "InstancePort" },
+            "InstancePort": { "Ref": "InstancePort" },
+            "Protocol": "TCP"
+          }
+        ],
+        "SecurityGroups": [
+          { "Ref": "AppAccessGroupIdSG" },
+          { "Ref": "InternalElbSecurityGroup" }
+        ],
+        "Scheme": "internal",
+        "Subnets": { "Ref": "SubnetIds" },
+        "Tags": [
+          {"Key": "Name", "Value": { "Ref": "AWS::StackName" }},
+          {"Key": "Role", "Value": "ilb"},
+          {"Key": "Environment", "Value": { "Ref": "Environment" }},
+          {"Key": "Application", "Value": { "Ref": "Application" }}
+        ]
+      }
+    },
+    
+    "InternalElbSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": { "Ref": "VpcId" },
+        "GroupDescription": "Restrict access to local only",
+        "SecurityGroupIngress": [
+          {"IpProtocol": "tcp","FromPort": { "Ref": "InstancePort" },"ToPort": { "Ref": "InstancePort" }, "CidrIp": { "Ref": "BastionCidr1" } },
+          {"IpProtocol": "tcp","FromPort": { "Ref": "InstancePort" },"ToPort": { "Ref": "InstancePort" }, "CidrIp": { "Ref": "BastionCidr2" } },
+          {"IpProtocol": "tcp","FromPort": { "Ref": "InstancePort" },"ToPort": { "Ref": "InstancePort" }, "CidrIp": { "Ref": "BastionCidr3" } },
+          {"IpProtocol": "tcp","FromPort": { "Ref": "InstancePort" },"ToPort": { "Ref": "InstancePort" }, "CidrIp": "10.0.0.0/8" }         
+        ],
+        "Tags": [
+          {"Key": "Name", "Value": { "Ref": "AWS::StackName" }},
+          {"Key": "Role", "Value": "ilb"},
+          {"Key": "Environment", "Value": { "Ref": "Environment" }},
+          {"Key": "Application", "Value": { "Ref": "Application" }}
+        ]
+      }
+    },
+    
+    "ExternalElbSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "VpcId": { "Ref": "VpcId" },
+        "GroupDescription": "Restrict access from Intuit Public IP only, TEP Server",
+        "SecurityGroupIngress": [
+          {"IpProtocol": "tcp","FromPort": { "Ref": "InstancePort" },"ToPort": { "Ref": "InstancePort" }, "CidrIp": { "Ref": "BastionCidr1" } },
+          {"IpProtocol": "tcp","FromPort": { "Ref": "InstancePort" },"ToPort": { "Ref": "InstancePort" }, "CidrIp": { "Ref": "BastionCidr2" } },
+          {"IpProtocol": "tcp","FromPort": { "Ref": "InstancePort" },"ToPort": { "Ref": "InstancePort" }, "CidrIp": { "Ref": "BastionCidr3" } },
+      { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "12.149.174.0/26"},
+      { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "206.108.45.0/26"},
+      { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "199.16.139.0/26"},
+      { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "52.21.231.226/32"},
+      { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "52.11.47.12/32"},
+      { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "199.16.136.0/21"},
+      { "IpProtocol" : "tcp", "FromPort" : "443", "ToPort" : "443", "CidrIp" : "206.108.45.0/26"},
+      {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "12.149.172.0/22" },
+          {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "12.179.132.0/22" },
+          {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "64.34.20.0/24" },
+          {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "65.204.229.0/24" },
+          {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "199.102.144.0/21" },
+          {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "206.108.40.0/21" },
+          {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "208.29.163.0/24" },
+          {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "12.52.79.32/27" },
+          {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "103.15.250.0/24" },
+          {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "67.148.170.0/24" },
+          {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "125.16.135.192/20" },
+          {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "52.27.133.58/32" },
+      {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "52.35.95.0/32" },
+      {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "52.36.16.191/32" },
+      {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "54.70.178.255/32" },
+      {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "54.70.171.77/32" },
+      {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "54.70.188.91/32" },
+      {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "54.70.188.187/32" },
+      {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "52.89.80.207/32" },
+          {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "54.213.153.29/32" },
+          {"IpProtocol": "tcp","FromPort": "443","ToPort": "443","CidrIp": "54.218.84.18/32" }         
+        ],
+        "Tags": [
+          {"Key": "Name", "Value": { "Ref": "AWS::StackName" }},
+          {"Key": "Role", "Value": "elb"},
+          {"Key": "Environment", "Value": { "Ref": "Environment" }},
+          {"Key": "Application", "Value": { "Ref": "Application" }}
+        ]
+      }
+    }    
+    
+  },
+
+  "Outputs": {
+
+    "InternalAppLoadBalancerNames": {
+      "Description": "Names of the Internal ELB",
+      "Value": { "Ref": "InternalELB" },
+      "Export" : {
+      "Name" : { "Ref": "ILBExportName" }
+    }
+    },
+    
+    "ExternalAppLoadBalancerNames": {
+      "Description": "Names of the External ELB",
+      "Value": { "Ref": "ExternalELB" },
+      "Export" : {
+      "Name" : { "Ref": "ELBExportName" }
+    }
+    },    
+
+    "InternalAppLoadBalancerDNSName": {
+      "Description": "DNS name of Internal ELB",
+      "Value": { "Fn::GetAtt": [ "InternalELB", "DNSName" ]}
+    },
+
+    "ExternalAppLoadBalancerDNSName": {
+      "Description": "DNS name of External ELB",
+      "Value": { "Fn::GetAtt": [ "ExternalELB", "DNSName" ]},
+      "Export" : {
+      "Name" : { "Ref": "ELBDNSExportName" }
+    }
+    },    
+    
+    "AppAccessGroupId": {
+      "Description": "APP access security group",
+      "Value": { "Ref": "AppAccessGroupIdSG" },
+      "Export" : {
+      "Name" : { "Ref": "AppSGExportName"}
+    }
+    }
+
+  }
+
+}

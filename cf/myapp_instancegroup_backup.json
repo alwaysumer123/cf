@@ -1,0 +1,411 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "DESNXG Conduit App instance stack",
+
+  "Parameters": {
+
+    "VpcId": {
+      "Description": "VPC ID",
+      "Type": "String"
+    },
+
+    "AwsAccountId": {
+      "Description": "AWS Account ID",
+      "Type": "String"
+    },
+
+    "SSHKeysBucket": {
+      "Description": "VPC ID",
+      "Type": "String",
+      "Default": "ssh-334419994682-keys"
+    },
+
+    "BastionCidr1": {
+      "Description": "Bastion CIDR 1",
+      "Type": "String"
+    },
+
+    "BastionCidr2": {
+      "Description": "Bastion CIDR IP 2",
+      "Type": "String"
+    },
+
+    "BastionCidr3": {
+      "Description": "Bastion CIDR IP 3",
+      "Type": "String"
+    },
+
+    "AvailabilityZones": {
+      "Description": "Availability Zone for the instances",
+      "Type": "CommaDelimitedList"
+    },
+
+    "InfrastructureSnsTopicArn": {
+      "Description": "SNS topic to notify of scaling operations",
+      "Type": "String"
+    },
+
+    "MaximumInstances": {
+      "Type": "String",
+      "Description": "Maximum number of  instances",
+      "Default": "1"
+    },
+
+    "MinimumInstances": {
+      "Type": "String",
+      "Description": "Minimum number of instances",
+      "Default": "1"
+    },
+
+    "AmiId": {
+      "Description": "Ami to provision",
+      "Type": "String"
+    },
+
+    "SubnetIds": {
+      "Description": "CSV of subnet IDs that this ASG should use",
+      "Type": "CommaDelimitedList"
+    },
+    "Role": {
+      "Type": "String",
+      "Description": "Role name to use as tag",
+      "Default": "conduit-ec2"
+    },
+
+    "Application": {
+      "Type": "String",
+      "Description": "Application name to use as tag",
+      "Default": "conduit"
+    },
+
+    "Customer": {
+      "Type": "String",
+      "Description": "The customer who will be using this environment"
+    },
+
+    "Environment": {
+      "Type": "String",
+      "Description": "Environment Name"
+    },
+
+    "EnvironmentIncrement": {
+      "Type": "String",
+      "Description": "Environment Increment Number"
+    },
+
+    "InstanceType": {
+      "Description": "EC2 instance type",
+      "Type": "String",
+      "Default": "m1.medium",
+      "ConstraintDescription": "must be a valid EC2 instance type."
+    },
+
+    "InternalAppLoadBalancerName": {
+      "Description": "InternalAppLoadBalancerName",
+      "Type": "String",
+      "Default": ""
+    },
+
+    "ExternalAppLoadBalancerName": {
+      "Description": "ExternalAppLoadBalancerName",
+      "Type": "String",
+      "Default": ""
+    },
+    "AppAccessGroupId": {
+      "Description": "AppAccessGroupId",
+      "Type": "String",
+      "Default": ""
+    },
+
+    "Abort": {
+      "Description": "Should the entire deployment be aborted if bootstraping fails?",
+      "Type": "String",
+      "Default": "yes",
+      "AllowedValues": ["yes", "no"],
+      "ConstraintDescription": "yes or no"
+    }
+
+  },
+
+  "Mappings": {
+    "BootstrapSettingMap": {
+      "abort": {
+        "yes": "$?",
+        "no": "0"
+      }
+    },
+    "S3Map": {
+      "us-west-1": {
+        "s3": "s3:/",
+        "http": "http://s3-us-west-1.amazonaws.com",
+        "https": "https://s3-us-west-1.amazonaws.com",
+        "endpoint": "s3-us-west-1.amazonaws.com"
+
+      },
+      "us-west-2": {
+        "s3": "s3:/",
+        "http": "http://s3-us-west-2.amazonaws.com",
+        "https": "https://s3-us-west-2.amazonaws.com",
+        "endpoint": "s3-us-west-2.amazonaws.com"
+      },
+      "us-east-1": {
+        "s3": "s3:/",
+        "http": "http://s3-us-east-1.amazonaws.com",
+        "https": "https://s3-us-east-1.amazonaws.com",
+        "endpoint": "s3-us-east-1.amazonaws.com"
+      }
+    }
+  },
+
+  "Resources": {
+
+    "AppClusterAccessGroupSG": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupDescription": "Group for APP access",
+        "VpcId": {
+          "Ref": "VpcId"
+        }
+      }
+    },
+
+
+
+
+    "AppRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Statement": [{
+            "Effect": "Allow",
+            "Principal": {
+              "Service": [
+                "ec2.amazonaws.com",
+                "codedeploy.us-east-1.amazonaws.com",
+                "codedeploy.us-east-2.amazonaws.com",
+                "codedeploy.us-west-1.amazonaws.com",
+                "codedeploy.us-west-2.amazonaws.com"
+              ]
+            },
+            "Action": ["sts:AssumeRole"]
+          }]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole",
+          "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
+        ],
+        "Path": "/",
+        "Policies": [{
+          "PolicyName": "ssh_access_RO",
+          "PolicyDocument": {
+            "Statement": [{
+              "Effect": "Allow",
+              "Action": [
+                "s3:GetObject",
+                "s3:ListBucket"
+              ],
+              "Resource": [
+                "*"
+              ]
+            }]
+          }
+        }]
+      }
+    },
+
+    "AppInstanceProfile": {
+      "Type": "AWS::IAM::InstanceProfile",
+      "Properties": {
+        "Path": "/",
+        "Roles": [{
+          "Ref": "AppRole"
+        }]
+      }
+    },
+
+    "Instances": {
+      "Type": "AWS::AutoScaling::AutoScalingGroup",
+      "Properties": {
+        "AvailabilityZones": {
+          "Ref": "AvailabilityZones"
+        },
+        "LaunchConfigurationName": {
+          "Ref": "InstanceLaunchConfig"
+        },
+        "LoadBalancerNames": [{
+          "Fn::ImportValue": {
+            "Ref": "InternalAppLoadBalancerName"
+          }
+        }, {
+          "Fn::ImportValue": {
+            "Ref": "ExternalAppLoadBalancerName"
+          }
+        }],
+        "MaxSize": {
+          "Ref": "MaximumInstances"
+        },
+        "MinSize": {
+          "Ref": "MinimumInstances"
+        },
+        "NotificationConfiguration": {
+          "TopicARN": {
+            "Ref": "InfrastructureSnsTopicArn"
+          },
+          "NotificationTypes": ["autoscaling:EC2_INSTANCE_LAUNCH_ERROR",
+            "autoscaling:EC2_INSTANCE_LAUNCH",
+            "autoscaling:EC2_INSTANCE_TERMINATE",
+            "autoscaling:EC2_INSTANCE_TERMINATE_ERROR"
+          ]
+        },
+        "Tags": [{
+            "Key": "Name",
+            "Value": {
+              "Ref": "AWS::StackName"
+            },
+            "PropagateAtLaunch": "true"
+          },
+          {
+            "Key": "Role",
+            "Value": {
+              "Ref": "Role"
+            },
+            "PropagateAtLaunch": "true"
+          },
+          {
+            "Key": "Application",
+            "Value": {
+              "Ref": "Application"
+            },
+            "PropagateAtLaunch": "true"
+          }
+        ],
+        "VPCZoneIdentifier": {
+          "Ref": "SubnetIds"
+        }
+      }
+    },
+
+    "InstanceLaunchConfig": {
+      "Type": "AWS::AutoScaling::LaunchConfiguration",
+      "Metadata": {
+        "region": {
+          "Ref": "AWS::Region"
+        },
+        "stack_name": {
+          "Ref": "AWS::StackName"
+        },
+
+        "app_environment": {
+          "Ref": "Environment"
+        },
+        "app_internal_load_balancer_names": {
+          "Fn::ImportValue": {
+            "Ref": "InternalAppLoadBalancerName"
+          }
+        },
+        "app_external_load_balancer_names": {
+          "Fn::ImportValue": {
+            "Ref": "ExternalAppLoadBalancerName"
+          }
+        }
+      }
+    },
+
+    "Properties": {
+      "IamInstanceProfile": {
+        "Ref": "AppInstanceProfile"
+      },
+      "KeyName": "ops-key",
+      "ImageId": {
+        "Ref": "AmiId"
+      },
+      "InstanceType": {
+        "Ref": "InstanceType"
+      },
+      "SecurityGroups": [{
+          "Ref": "AppClusterAccessGroupSG"
+        }
+      ],
+
+      "UserData": {
+        "Fn::Base64": {
+          "Fn::Join": ["", [
+            "#!/bin/bash\n",
+            "aws configure set default.region ", {
+              "Ref": "AWS::Region"
+            }, "\n",
+            "echo 'Running cfn-init'", "\n",
+
+            "/opt/aws/bin/cfn-init ",
+            " --verbose ",
+            " -s ", {
+              "Ref": "AWS::StackName"
+            },
+            " -r InstanceLaunchConfig",
+            " --region=", {
+              "Ref": "AWS::Region"
+            }, "\n",
+
+            "# install codedeploy agent\n",
+            "#runuser -c \"yum update -y\" root", "\n",
+            "runuser -c \"yum install wget bzip2 zip unzip ruby -y\" root", "\n",
+            "runuser -c \"wget https://aws-codedeploy-us-west-2.s3.amazonaws.com/latest/install\" root", "\n",
+            "#runuser -c \"chmod +x ./install\" root", "\n",
+
+            "# Access Management - Sync the authorized_keys file and create a cron job to re-sync every 5 minutes\n",
+            "cat << EOF > /usr/local/bin/sync_authorized_keys", "\n",
+            "#!/bin/bash -ex", "\n",
+            ". ~/.bash_profile", "\n",
+            "curl -s http://169.254.169.254/latest/meta-data/public-keys/0/openssh-key > /tmp/authorized_keys", "\n",
+            "timeout 60 aws s3 cp s3://", {
+              "Ref": "SSHKeysBucket"
+
+            }, "/authorized_keys - >> /tmp/authorized_keys", "\n",
+            "cat /tmp/authorized_keys | xargs -n 1 -I {} bash -c 'ssh-keygen -l -f /dev/stdin <<< \"{}\"'", "\n",
+            "install -m 600 -o ec2-user /tmp/authorized_keys /home/ec2-user/.ssh/authorized_keys", "\n",
+            "rm /tmp/authorized_keys", "\n",
+            "EOF", "\n",
+            "chmod 744 /usr/local/bin/sync_authorized_keys", "\n",
+            "/usr/local/bin/sync_authorized_keys || true", "\n",
+
+            "cat << EOF > /etc/cron.d/sync_authorized_keys", "\n",
+            "*/5 * * * * root /usr/local/bin/sync_authorized_keys > /var/log/sync_authorized_keys.log 2>&1", "\n",
+            "EOF", "\n",
+
+            "# install and run chef-client\n",
+            "#runuser -c \"aws s3 sync s3://desnxg-preprod/bootstrap/  /dev/shm/\" root", "\n",
+            "#runuser -c \"rpm -Uvh /dev/shm/chef-12.4.0-1.el6.x86_64.rpm\" root", "\n",
+            "#runuser -c \"rpm -Uvh /dev/shm/secrets-cli-2.3.2.0.rpm\" root", "\n",
+            "#runuser -c \"mkdir /var/tmp\" root", "\n",
+            "#runuser -c \"unzip /var/tmp/chef_repo.zip -d /var/tmp\" root", "\n",
+            "#runuser -c \"cp -r /var/tmp/chef /var/ \" root", "\n",
+            "#runuser -c \"chmod 755 /var/tmp/scripts/*.sh \" root", "\n",
+            "#runuser -c \"rm -f /var/tmp/chef_repo.zip\" root", "\n",
+            "#runuser -c \"chef-solo -c /var/chef/solo.rb -o 'role[desnxg_conduit]' \" root", "\n",
+            "#runuser -c \"/var/tmp/scripts/desnxg_conduit_deploy.sh \" root", "\n",
+            "#/opt/aws/bin/cfn-signal -e ", {
+              "Fn::FindInMap": ["BootstrapSettingMap", "abort", {
+                "Ref": "Abort"
+              }]
+            }, " '", {
+              "Ref": "InstancesWaitHandle"
+            }, "'\n",
+            "echo Done!", "\n"
+          ]]
+        }
+      }
+    }
+  },
+
+  
+  "Outputs": {
+
+    "InstanceAutoScalingGroup": {
+      "Value": {
+        "Ref": "Instances"
+      },
+      "Description": "Wb ASG ID"
+    }
+
+  }
+}

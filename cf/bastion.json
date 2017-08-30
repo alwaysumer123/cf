@@ -1,0 +1,211 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "Bastion Box (ASG)",
+
+    "Parameters": {
+        "SubnetAzs": {
+            "Description": "Subnets where App Resides",
+            "Type": "List<AWS::EC2::AvailabilityZone::Name>",
+            "Default": "us-west-2a,us-west-2b,us-west-2c"
+        },
+        "SubnetIds": {
+            "Description": "Subnet-Ids where App Resides",
+            "Type": "List<AWS::EC2::Subnet::Id>",
+            "Default": "subnet-f421d7bc,subnet-1427f572,subnet-aa4e23f1"
+        },
+        "InstanceType": {
+            "Description": "Instance Type",
+            "Type": "String",
+            "Default": "m3.small"
+        },
+        "AccountId": {
+            "Description": "Account Id for the Account",
+            "Type": "String",
+            "Default": "334419994682"
+        },
+        "AllocationId": {
+            "Description": "EIP Allocation Id",
+            "Type": "String",
+            "Default": "eipalloc-0c9c5431"
+        },
+        "AmiId": {
+            "Description": "RHEL 6 AMI ID (https://console.intuit.com/console/#/amiCatalog)",
+            "Type": "String",
+            "Default": "ami-1a59df7a"
+        },
+        "KeyName": {
+            "Description": "Key pair name",
+            "Type": "AWS::EC2::KeyPair::KeyName",
+            "Default": "ops-key"
+        },
+        "VpcId": {
+            "Description": "VPC ID",
+            "Type": "AWS::EC2::VPC::Id",
+            "Default": "vpc-273bbb41"
+        },
+        "SSHKeysBucket": {
+            "Description": "VPC ID",
+            "Type": "String",
+            "Default": "ssh-334419994682-keys"
+        },
+        "Region": {
+            "Description": "Region Name",
+            "Type": "String",
+            "Default": "us-west-2"
+        }
+
+    },
+
+    "Resources": {
+        "ASG": {
+            "Type": "AWS::AutoScaling::AutoScalingGroup",
+            "Properties": {
+                "LaunchConfigurationName": {
+                    "Ref": "LaunchConfig"
+                },
+                "MaxSize": 1,
+                "MinSize": 1,
+                "Cooldown": 60,
+                "AvailabilityZones": {
+                    "Ref": "SubnetAzs"
+                },
+                "VPCZoneIdentifier": {
+                    "Ref": "SubnetIds"
+                },
+                "Tags": [{
+                    "Key": "Name",
+                    "Value": "Bastion",
+                    "PropagateAtLaunch": "true"
+                }]
+            }
+        },
+
+        "LaunchConfig": {
+            "Type": "AWS::AutoScaling::LaunchConfiguration",
+            "Properties": {
+                "AssociatePublicIpAddress": "true",
+                "KeyName": {
+                    "Ref": "KeyName"
+                },
+                "ImageId": {
+                    "Ref": "AmiId"
+                },
+                "SecurityGroups": [{
+                    "Ref": "bastionSG"
+                }],
+                "InstanceType": {
+                    "Ref": "InstanceType"
+                },
+                "IamInstanceProfile": {
+                    "Ref": "bastionIamProfile"
+                },
+                "UserData": {
+                    "Fn::Base64": {
+                        "Fn::Join": ["", [
+                            "#!/bin/bash -x\n",
+
+                            "# Use OpenDNS instead of the DNS servers from DHCP\n",
+                            "echo 'Hello World!'\n",
+                            "yum -y update'\n",
+                            "yum -y install python-pip'\n",
+                            "rpm -Uvh https://opscode-omnibus-packages.s3.amazonaws.com/el/6/x86_64/chef-12.4.0-1.el6.x86_64.rpm","\n",
+                            
+                            "cat << EOF > /usr/local/bin/sync_authorized_keys", "\n",
+                            "#!/bin/bash -ex", "\n",
+                            ". ~/.bash_profile", "\n",
+                            "curl -s http://169.254.169.254/latest/meta-data/public-keys/0/openssh-key > /tmp/authorized_keys", "\n",
+                            "timeout 60 aws s3 cp s3://", {
+                                "Ref": "SSHKeysBucket"
+                            },  "/authorized_keys - >> /tmp/authorized_keys", "\n",
+                            "cat /tmp/authorized_keys | xargs -n 1 -I {} bash -c 'ssh-keygen -l -f /dev/stdin <<< \"{}\"'", "\n",
+                            "install -m 600 -o ec2-user /tmp/authorized_keys /home/ec2-user/.ssh/authorized_keys", "\n",
+                            "rm -y /tmp/authorized_keys", "\n",
+                            "EOF", "\n",
+                            "chmod 744 /usr/local/bin/sync_authorized_keys","\n",
+                            "/usr/local/bin/sync_authorized_keys || true", "\n",
+
+                            "cat << EOF > /etc/cron.d/sync_authorized_keys", "\n",
+                            "*/5 * * * * root /usr/local/bin/sync_authorized_keys > /var/log/sync_authorized_keys.log 2>&1", "\n",
+                            "EOF", "\n"      
+                        ]]
+                    }
+                }
+            }
+
+        },
+
+        "bastionIamProfile": {
+            "Type": "AWS::IAM::InstanceProfile",
+            "Properties": {
+                "Path": "/",
+                "Roles": [{
+                    "Ref": "bastionRole"
+                }]
+            }
+        },
+
+        "bastionRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [{
+                        "Effect": "Allow",
+                        "Principal": {
+                            "Service": ["ec2.amazonaws.com"]
+                        },
+                        "Action": ["sts:AssumeRole"]
+                    }]
+                },
+                "Path": "/",
+                "Policies": [{
+                        "PolicyName": "s3_build_files-RO",
+                        "PolicyDocument": {
+                            "Statement": [{
+                                "Effect": "Allow",
+                                "Action": [
+                                    "s3:G*",
+                                    "s3:L*"
+                                ],
+                                "Resource": ["*"]
+
+                            }]
+                        }
+                    },
+
+                    {
+                        "PolicyName": "assosiate_addr",
+                        "PolicyDocument": {
+                            "Statement": [{
+                                "Effect": "Allow",
+                                "Action": [
+                                    "ec2:AssociateAddress",
+                                    "ec2:DescribeAddresses*",
+                                    "ec2:DisassociateAddress"
+                                ],
+                                "Resource": [
+                                    "*"
+                                ]
+                            }]
+                        }
+                    }
+                ]
+            }
+        },
+
+        "bastionSG": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+                "GroupDescription": "Enable SSH access",
+                "VpcId": {
+                    "Ref": "VpcId"
+                },
+                "SecurityGroupIngress": [{
+                    "IpProtocol": "tcp",
+                    "FromPort": "22",
+                    "ToPort": "22",
+                    "CidrIp": "0.0.0.0/0"
+                }]
+            }
+        }
+    }
+}
